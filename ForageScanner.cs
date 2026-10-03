@@ -27,6 +27,10 @@ public static class ForageScanner
             if (obj == null)
                 continue;
 
+            string id = obj.QualifiedItemId;
+            if (config.DisabledItemIds.Contains(id))
+                continue;
+
             float distTiles = Vector2.Distance(playerTile, tile);
             if (distTiles > maxDistanceTiles || distTiles < 0.5f)
                 continue;
@@ -38,7 +42,7 @@ public static class ForageScanner
                 isForage = true;
             else if (obj.Category == SObject.GreensCategory)
                 isForage = true;
-            else if (config.IncludeArtifactSpots && obj.QualifiedItemId == "(O)590") // 3 con giun đào đất
+            else if (config.IncludeArtifactSpots && id == "(O)590") // 3 con giun đào đất
                 isForage = true;
 
             if (isForage)
@@ -47,16 +51,20 @@ public static class ForageScanner
                 Vector2 diff = objPixel - playerPixel;
                 float angle = (float)Math.Atan2(diff.Y, diff.X);
 
-                var itemData = ItemRegistry.GetData(obj.QualifiedItemId);
-                items.Add(new TrackedItem(obj.DisplayName, objPixel, distTiles, angle, itemData));
+                var itemData = ItemRegistry.GetData(id);
+                items.Add(new TrackedItem(id, obj.DisplayName, objPixel, distTiles, angle, itemData));
             }
         }
 
-        // 2. Quét TerrainFeatures (cây bụi bụi dâu rừng hoang dã khi vào mùa berry)
+        // 2. Quét TerrainFeatures (bụi dâu rừng chín theo mùa)
         foreach (var pair in location.terrainFeatures.Pairs)
         {
             if (pair.Value is Bush bush && bush.tileSheetOffset.Value == 1 && bush.inBloom())
             {
+                string berryId = (Game1.season == Season.Fall) ? "(O)410" : "(O)296";
+                if (config.DisabledItemIds.Contains(berryId))
+                    continue;
+
                 Vector2 tile = pair.Key;
                 float distTiles = Vector2.Distance(playerTile, tile);
                 if (distTiles <= maxDistanceTiles && distTiles >= 0.5f)
@@ -65,10 +73,8 @@ public static class ForageScanner
                     Vector2 diff = bushPixel - playerPixel;
                     float angle = (float)Math.Atan2(diff.Y, diff.X);
 
-                    // Mùa xuân: Salmonberry (296), Mùa thu: Blackberry (410)
-                    string berryId = (Game1.season == Season.Fall) ? "(O)410" : "(O)296";
                     var itemData = ItemRegistry.GetData(berryId);
-                    items.Add(new TrackedItem("Bụi dâu chín", bushPixel, distTiles, angle, itemData));
+                    items.Add(new TrackedItem(berryId, "Bụi dâu chín", bushPixel, distTiles, angle, itemData));
                 }
             }
         }

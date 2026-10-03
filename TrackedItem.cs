@@ -6,14 +6,16 @@ namespace ForageRadar;
 
 public class TrackedItem
 {
+    public string ItemId { get; }
     public string DisplayName { get; }
     public Vector2 WorldPosition { get; }
     public float DistanceTiles { get; }
     public float Angle { get; }
     public ParsedItemData? ItemData { get; }
 
-    public TrackedItem(string displayName, Vector2 worldPosition, float distanceTiles, float angle, ParsedItemData? itemData)
+    public TrackedItem(string itemId, string displayName, Vector2 worldPosition, float distanceTiles, float angle, ParsedItemData? itemData)
     {
+        this.ItemId = itemId;
         this.DisplayName = displayName;
         this.WorldPosition = worldPosition;
         this.DistanceTiles = distanceTiles;

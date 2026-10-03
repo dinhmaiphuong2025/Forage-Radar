@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -20,13 +21,13 @@ public class ModEntry : Mod
         helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
         helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
         helper.Events.Display.RenderedHud += this.OnRenderedHud;
+        helper.Events.Input.ButtonPressed += this.OnButtonPressed;
 
         this.Monitor.Log("Forage Radar đã khởi động sẵn sàng.", LogLevel.Info);
     }
 
     private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
     {
-        // Có thể tích hợp Generic Mod Config Menu ở đây sau nếu muốn
     }
 
     private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
@@ -51,5 +52,23 @@ public class ModEntry : Mod
             return;
 
         this.Renderer.Draw(e.SpriteBatch, this.TrackedItems, Game1.player);
+    }
+
+    private void OnButtonPressed(object? sender, ButtonPressedEventArgs e)
+    {
+        if (!Context.IsWorldReady || Game1.activeClickableMenu != null)
+            return;
+
+        // Bắt sự kiện chạm cảm ứng trên màn hình hoặc click chuột
+        if (e.Button == SButton.MouseLeft)
+        {
+            Point mousePos = Game1.getMousePosition();
+            if (this.Renderer.ButtonBounds.Contains(mousePos.X, mousePos.Y))
+            {
+                this.Helper.Input.Suppress(SButton.MouseLeft);
+                Game1.playSound("bigSelect");
+                Game1.activeClickableMenu = new RadarMenu(this.Config, this.Helper);
+            }
+        }
     }
 }

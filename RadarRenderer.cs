@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using StardewModdingAPI;
 using StardewValley;
 
 namespace ForageRadar;
@@ -12,9 +11,12 @@ public class RadarRenderer
     private readonly ModConfig Config;
     private Texture2D? PixelTexture;
 
+    public Rectangle ButtonBounds { get; private set; }
+
     public RadarRenderer(ModConfig config)
     {
         this.Config = config;
+        this.ButtonBounds = new Rectangle(config.ButtonPositionX, config.ButtonPositionY, 52, 52);
     }
 
     private Texture2D GetPixel(GraphicsDevice device)
@@ -29,20 +31,33 @@ public class RadarRenderer
 
     public void Draw(SpriteBatch b, List<TrackedItem> items, Farmer player)
     {
+        Texture2D pixel = this.GetPixel(b.GraphicsDevice);
+
+        // 1. Vẽ nút radar nổi trên màn hình để mở menu
+        this.DrawRadarButton(b, pixel);
+
         if (items.Count == 0 || player == null)
             return;
 
-        // Tọa độ người chơi trên màn hình UI
-        Vector2 playerScreenPos = Game1.GlobalToLocal(Game1.viewport, player.getStandingPosition());
-        playerScreenPos.Y -= 32f; // Tâm ở ngực nhân vật
+        // 2. Tọa độ chính giữa bounding box nhân vật (neo chuẩn xác tâm người chơi)
+        Rectangle playerBoundingBox = player.GetBoundingBox();
+        Vector2 playerCenterWorld = new Vector2(
+            playerBoundingBox.Center.X,
+            playerBoundingBox.Center.Y - 16f
+        );
+
+        // Chuyển sang tọa độ viewport màn hình
+        Vector2 playerScreenPos = new Vector2(
+            playerCenterWorld.X - Game1.viewport.X,
+            playerCenterWorld.Y - Game1.viewport.Y
+        );
 
         float radius = this.Config.RadarCircleRadius;
-        Texture2D pixel = this.GetPixel(b.GraphicsDevice);
 
-        // 1. Vẽ vòng tròn radar mảnh mờ mờ quanh player
-        DrawCircle(b, pixel, playerScreenPos, radius, Color.LimeGreen * 0.35f, 32);
+        // 3. Vẽ vòng tròn radar mảnh quanh player
+        DrawCircle(b, pixel, playerScreenPos, radius, Color.LimeGreen * 0.4f, 32);
 
-        // 2. Vẽ từng item trên vành đai radar
+        // 4. Vẽ từng item trên vành đai radar
         foreach (var item in items)
         {
             float cos = (float)Math.Cos(item.Angle);
@@ -53,10 +68,10 @@ public class RadarRenderer
                 playerScreenPos.Y + sin * radius
             );
 
-            // Vẽ mũi tên trỏ ra hướng item
+            // Mũi tên trỏ ra hướng item
             DrawArrow(b, pixel, iconPos, item.Angle, Color.Yellow);
 
-            // Vẽ icon item từ asset của game
+            // Icon item từ game asset
             if (item.ItemData != null)
             {
                 Texture2D texture = item.ItemData.GetTexture();
@@ -65,24 +80,45 @@ public class RadarRenderer
                 float scale = this.Config.IconScale;
                 Vector2 origin = new Vector2(src.Width / 2f, src.Height / 2f);
 
-                // Viền bóng đen phía sau icon
+                // Bóng đen
                 b.Draw(texture, iconPos + new Vector2(2, 2), src, Color.Black * 0.6f, 0f, origin, scale, SpriteEffects.None, 0.9f);
                 // Icon chính
                 b.Draw(texture, iconPos, src, Color.White, 0f, origin, scale, SpriteEffects.None, 1f);
             }
 
-            // Vẽ số khoảng cách (ô tile)
+            // Khoảng cách: Dùng tinyFont đồng nhất với scale nhỏ gọn
             if (this.Config.ShowDistance)
             {
                 string distText = $"{Math.Round(item.DistanceTiles)}m";
-                Vector2 textSize = Game1.tinyFont.MeasureString(distText);
+                float textScale = 0.85f; // Thu nhỏ chữ để vừa vặn, không bị to đột biến
+                Vector2 textSize = Game1.tinyFont.MeasureString(distText) * textScale;
                 Vector2 textPos = new Vector2(iconPos.X - textSize.X / 2f, iconPos.Y + 16f);
 
-                // Bóng text
-                b.DrawString(Game1.tinyFont, distText, textPos + new Vector2(1, 1), Color.Black);
-                b.DrawString(Game1.tinyFont, distText, textPos, Color.White);
+                // Bóng đen
+                b.DrawString(Game1.tinyFont, distText, textPos + new Vector2(1, 1), Color.Black, 0f, Vector2.Zero, textScale, SpriteEffects.None, 1f);
+                // Chữ chính màu trắng
+                b.DrawString(Game1.tinyFont, distText, textPos, Color.White, 0f, Vector2.Zero, textScale, SpriteEffects.None, 1f);
             }
         }
+    }
+
+    private void DrawRadarButton(SpriteBatch b, Texture2D pixel)
+    {
+        Rectangle r = this.ButtonBounds;
+
+        // Nền nút
+        b.Draw(pixel, r, Color.Black * 0.5f);
+        // Viền nút
+        DrawLine(b, pixel, new Vector2(r.Left, r.Top), new Vector2(r.Right, r.Top), Color.Gold, 2f);
+        DrawLine(b, pixel, new Vector2(r.Left, r.Bottom), new Vector2(r.Right, r.Bottom), Color.Gold, 2f);
+        DrawLine(b, pixel, new Vector2(r.Left, r.Top), new Vector2(r.Left, r.Bottom), Color.Gold, 2f);
+        DrawLine(b, pixel, new Vector2(r.Right, r.Top), new Vector2(r.Right, r.Bottom), Color.Gold, 2f);
+
+        // Vẽ biểu tượng radar nhỏ ở giữa nút
+        Vector2 center = new Vector2(r.Center.X, r.Center.Y);
+        DrawCircle(b, pixel, center, 14f, Color.LimeGreen, 16);
+        DrawCircle(b, pixel, center, 6f, Color.LimeGreen * 0.7f, 12);
+        b.Draw(pixel, new Rectangle((int)center.X - 2, (int)center.Y - 2, 4, 4), Color.Yellow);
     }
 
     private static void DrawCircle(SpriteBatch b, Texture2D pixel, Vector2 center, float radius, Color color, int segments)
@@ -103,8 +139,8 @@ public class RadarRenderer
     private static void DrawArrow(SpriteBatch b, Texture2D pixel, Vector2 pos, float angle, Color color)
     {
         Vector2 dir = new Vector2((float)Math.Cos(angle), (float)Math.Sin(angle));
-        Vector2 arrowTip = pos + dir * 16f;
-        DrawLine(b, pixel, pos, arrowTip, color * 0.8f, 3f);
+        Vector2 arrowTip = pos + dir * 14f;
+        DrawLine(b, pixel, pos, arrowTip, color * 0.85f, 3f);
     }
 
     private static void DrawLine(SpriteBatch b, Texture2D pixel, Vector2 start, Vector2 end, Color color, float thickness)
