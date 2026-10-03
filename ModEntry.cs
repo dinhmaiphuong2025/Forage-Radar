@@ -83,7 +83,7 @@ public class ModEntry : Mod
         // Tiêu đề mục cài đặt
         optionsPage.options.Add(new OptionsElement("--- FORAGE & NPC RADAR ---"));
 
-        // Checkbox Bật / Tắt Radar
+        // 1. Checkbox Bật / Tắt Radar
         var chkEnabled = new ModOptionsCheckbox("Bật Radar tìm kiếm", this.Config.Enabled, val =>
         {
             this.Config.Enabled = val;
@@ -91,7 +91,7 @@ public class ModEntry : Mod
         });
         optionsPage.options.Add(chkEnabled);
 
-        // Checkbox Bật / Tắt Vòng tròn radar quanh người chơi
+        // 2. Checkbox Bật / Tắt Vòng tròn radar quanh người chơi
         var chkCircle = new ModOptionsCheckbox("Hiện vòng tròn Radar", this.Config.ShowCircle, val =>
         {
             this.Config.ShowCircle = val;
@@ -99,7 +99,51 @@ public class ModEntry : Mod
         });
         optionsPage.options.Add(chkCircle);
 
-        // Checkbox Bật / Tắt Dò tìm Dân Làng
+        // 3. Tùy chọn Bán kính vòng tròn hiển thị trên màn hình (Radar Circle Size)
+        List<string> circleOptions = new() { "Nhỏ (90px)", "Vừa (120px)", "Lớn (150px)", "Rất lớn (180px)" };
+        int initialCircleIdx = this.Config.RadarCircleRadius switch
+        {
+            <= 90f => 0,
+            <= 120f => 1,
+            <= 150f => 2,
+            _ => 3
+        };
+        var pmCircle = new ModOptionsPlusMinus("Bán kính vòng tròn:", initialCircleIdx, circleOptions, idx =>
+        {
+            this.Config.RadarCircleRadius = idx switch
+            {
+                0 => 90f,
+                1 => 120f,
+                2 => 150f,
+                _ => 180f
+            };
+            this.Helper.WriteConfig(this.Config);
+        });
+        optionsPage.options.Add(pmCircle);
+
+        // 4. Tùy chọn Bán kính quét trên bản đồ (Scan Range Tiles)
+        List<string> scanOptions = new() { "Gần (20 ô)", "Vừa (40 ô)", "Rộng (60 ô)", "Toàn map (100 ô)" };
+        int initialScanIdx = this.Config.ScanRadiusTiles switch
+        {
+            <= 20f => 0,
+            <= 40f => 1,
+            <= 60f => 2,
+            _ => 3
+        };
+        var pmScan = new ModOptionsPlusMinus("Bán kính quét map:", initialScanIdx, scanOptions, idx =>
+        {
+            this.Config.ScanRadiusTiles = idx switch
+            {
+                0 => 20f,
+                1 => 40f,
+                2 => 60f,
+                _ => 100f
+            };
+            this.Helper.WriteConfig(this.Config);
+        });
+        optionsPage.options.Add(pmScan);
+
+        // 5. Checkbox Bật / Tắt Dò tìm Dân Làng
         var chkVillagers = new ModOptionsCheckbox("Dò tìm Dân Làng (NPC)", this.Config.TrackVillagers, val =>
         {
             this.Config.TrackVillagers = val;
@@ -107,7 +151,7 @@ public class ModEntry : Mod
         });
         optionsPage.options.Add(chkVillagers);
 
-        // Checkbox Bật / Tắt hiển thị khoảng cách
+        // 6. Checkbox Bật / Tắt hiển thị khoảng cách
         var chkDist = new ModOptionsCheckbox("Hiện khoảng cách (mét)", this.Config.ShowDistance, val =>
         {
             this.Config.ShowDistance = val;
@@ -115,12 +159,65 @@ public class ModEntry : Mod
         });
         optionsPage.options.Add(chkDist);
 
-        // Nút mở menu quản lý từng item hái lượm & dân làng cần quét
+        // 7. Nút mở menu quản lý từng item hái lượm & dân làng cần quét
         var btnItems = new OptionsButton("Quản lý danh sách Item & Dân Làng...", () =>
         {
             Game1.activeClickableMenu = new RadarMenu(this.Config, this.Helper);
         });
         optionsPage.options.Add(btnItems);
+    }
+}
+
+// Lớp hỗ trợ nút tăng giảm PlusMinus mượt mà trong OptionsPage
+public class ModOptionsPlusMinus : OptionsElement
+{
+    private readonly List<string> Options;
+    private readonly Action<int> OnChanged;
+    public int selected;
+    private Rectangle minusButton;
+    private Rectangle plusButton;
+
+    public ModOptionsPlusMinus(string label, int initialIndex, List<string> options, Action<int> onChanged)
+        : base(label, -1, -1, 32, 32, -1)
+    {
+        this.Options = options;
+        this.selected = Math.Clamp(initialIndex, 0, options.Count - 1);
+        this.OnChanged = onChanged;
+    }
+
+    public override void receiveLeftClick(int x, int y)
+    {
+        if (this.minusButton.Contains(x, y) && this.selected > 0)
+        {
+            this.selected--;
+            Game1.playSound("drumkit6");
+            this.OnChanged(this.selected);
+        }
+        else if (this.plusButton.Contains(x, y) && this.selected < this.Options.Count - 1)
+        {
+            this.selected++;
+            Game1.playSound("drumkit6");
+            this.OnChanged(this.selected);
+        }
+    }
+
+    public override void draw(Microsoft.Xna.Framework.Graphics.SpriteBatch b, int slotX, int slotY, IClickableMenu? context = null)
+    {
+        int labelWidth = (int)Game1.dialogueFont.MeasureString(this.label).X;
+        int startX = slotX + this.bounds.X + labelWidth + 24;
+        int itemY = slotY + this.bounds.Y;
+
+        this.minusButton = new Rectangle(startX, itemY, 28, 32);
+        b.Draw(Game1.mouseCursors, new Vector2(this.minusButton.X, this.minusButton.Y), new Rectangle(177, 345, 7, 8), this.selected > 0 ? Color.White : Color.Gray * 0.5f, 0f, Vector2.Zero, 4f, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0.4f);
+
+        string currentText = this.Options[this.selected];
+        Vector2 textSize = Game1.dialogueFont.MeasureString(currentText);
+        b.DrawString(Game1.dialogueFont, currentText, new Vector2(startX + 36, itemY - 4), Game1.textColor);
+
+        this.plusButton = new Rectangle(startX + 44 + (int)textSize.X, itemY, 28, 32);
+        b.Draw(Game1.mouseCursors, new Vector2(this.plusButton.X, this.plusButton.Y), new Rectangle(184, 345, 7, 8), this.selected < this.Options.Count - 1 ? Color.White : Color.Gray * 0.5f, 0f, Vector2.Zero, 4f, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0.4f);
+
+        base.draw(b, slotX, slotY, context);
     }
 }
 
