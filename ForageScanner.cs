@@ -79,6 +79,35 @@ public static class ForageScanner
             }
         }
 
+        // 3. Quét NPC / Dân làng trên bản đồ
+        if (config.TrackVillagers)
+        {
+            foreach (var npc in location.characters)
+            {
+                if (npc == null || npc.IsMonster || !npc.isVillager())
+                    continue;
+
+                string npcId = $"NPC_{npc.Name}";
+                if (config.DisabledItemIds.Contains(npcId))
+                    continue;
+
+                Vector2 npcPixel = npc.getStandingPosition();
+                float distTiles = Vector2.Distance(playerPixel, npcPixel) / 64f;
+                if (distTiles > maxDistanceTiles || distTiles < 0.5f)
+                    continue;
+
+                Vector2 diff = npcPixel - playerPixel;
+                float angle = (float)Math.Atan2(diff.Y, diff.X);
+
+                // Ưu tiên dùng Mugshot từ Sprite đầu của NPC
+                if (npc.Sprite?.Texture != null)
+                {
+                    Rectangle headRect = new Rectangle(0, 0, 16, 16);
+                    items.Add(new TrackedItem(npcId, npc.displayName, npcPixel, distTiles, angle, npc.Sprite.Texture, headRect));
+                }
+            }
+        }
+
         return items;
     }
 }

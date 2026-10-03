@@ -57,18 +57,31 @@ public class RadarRenderer
                 playerCenter.Y + sin * radius
             );
 
-            // Mũi tên trỏ ra hướng item
-            DrawArrowWorld(b, pixel, iconWorldPos, item.Angle, Color.Yellow);
+            // Mũi tên trỏ ra hướng item / NPC
+            Color arrowColor = item.IsNpc ? Color.Cyan : Color.Yellow;
+            DrawArrowWorld(b, pixel, iconWorldPos, item.Angle, arrowColor);
 
-            // Icon item từ game asset
-            if (item.ItemData != null)
+            Vector2 drawPos = Game1.GlobalToLocal(Game1.viewport, iconWorldPos);
+
+            // Icon item từ game asset hoặc Sprite NPC
+            if (item.IsNpc && item.CustomTexture != null)
+            {
+                float scale = this.Config.IconScale * 1.5f;
+                Rectangle src = item.CustomSourceRect;
+                Vector2 origin = new Vector2(src.Width / 2f, src.Height / 2f);
+
+                // Bóng đổ
+                b.Draw(item.CustomTexture, drawPos + new Vector2(2, 2), src, Color.Black * 0.6f, 0f, origin, scale, SpriteEffects.None, 0.9f);
+                // Head Sprite chính
+                b.Draw(item.CustomTexture, drawPos, src, Color.White, 0f, origin, scale, SpriteEffects.None, 1f);
+            }
+            else if (item.ItemData != null)
             {
                 Texture2D texture = item.ItemData.GetTexture();
                 Rectangle src = item.ItemData.GetSourceRect();
 
                 float scale = this.Config.IconScale;
                 Vector2 origin = new Vector2(src.Width / 2f, src.Height / 2f);
-                Vector2 drawPos = Game1.GlobalToLocal(Game1.viewport, iconWorldPos);
 
                 // Bóng đổ
                 b.Draw(texture, drawPos + new Vector2(2, 2), src, Color.Black * 0.6f, 0f, origin, scale, SpriteEffects.None, 0.9f);
@@ -80,10 +93,9 @@ public class RadarRenderer
             if (this.Config.ShowDistance)
             {
                 string distText = $"{Math.Round(item.DistanceTiles)}m";
-                float textScale = this.Config.DistanceFontScale; // Mặc định 0.85f (rõ ràng, to vừa vặn, không bị bé tí)
+                float textScale = this.Config.DistanceFontScale;
                 Vector2 textSize = Game1.smallFont.MeasureString(distText) * textScale;
-                Vector2 screenPos = Game1.GlobalToLocal(Game1.viewport, iconWorldPos);
-                Vector2 textPos = new Vector2(screenPos.X - textSize.X / 2f, screenPos.Y + 16f);
+                Vector2 textPos = new Vector2(drawPos.X - textSize.X / 2f, drawPos.Y + 16f);
 
                 Utility.drawTextWithShadow(b, distText, Game1.smallFont, textPos, Color.White, textScale);
             }

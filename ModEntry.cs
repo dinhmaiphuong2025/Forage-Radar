@@ -76,12 +76,12 @@ public class ModEntry : Mod
     {
         foreach (var opt in optionsPage.options)
         {
-            if (opt.label == "--- FORAGE RADAR ---")
+            if (opt.label == "--- FORAGE & NPC RADAR ---")
                 return;
         }
 
         // Tiêu đề mục cài đặt
-        optionsPage.options.Add(new OptionsElement("--- FORAGE RADAR ---"));
+        optionsPage.options.Add(new OptionsElement("--- FORAGE & NPC RADAR ---"));
 
         // Checkbox Bật / Tắt Radar
         var chkEnabled = new ModOptionsCheckbox("Bật Radar tìm kiếm", this.Config.Enabled, val =>
@@ -99,6 +99,14 @@ public class ModEntry : Mod
         });
         optionsPage.options.Add(chkCircle);
 
+        // Checkbox Bật / Tắt Dò tìm Dân Làng
+        var chkVillagers = new ModOptionsCheckbox("Dò tìm Dân Làng (NPC)", this.Config.TrackVillagers, val =>
+        {
+            this.Config.TrackVillagers = val;
+            this.Helper.WriteConfig(this.Config);
+        });
+        optionsPage.options.Add(chkVillagers);
+
         // Checkbox Bật / Tắt hiển thị khoảng cách
         var chkDist = new ModOptionsCheckbox("Hiện khoảng cách (mét)", this.Config.ShowDistance, val =>
         {
@@ -107,8 +115,8 @@ public class ModEntry : Mod
         });
         optionsPage.options.Add(chkDist);
 
-        // Nút mở menu quản lý từng item hái lượm cần quét
-        var btnItems = new OptionsButton("Quản lý danh sách Item cần quét...", () =>
+        // Nút mở menu quản lý từng item hái lượm & dân làng cần quét
+        var btnItems = new OptionsButton("Quản lý danh sách Item & Dân Làng...", () =>
         {
             Game1.activeClickableMenu = new RadarMenu(this.Config, this.Helper);
         });
