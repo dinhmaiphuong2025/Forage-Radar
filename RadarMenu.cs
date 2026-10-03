@@ -357,15 +357,21 @@ public class RadarMenu : IClickableMenu
                 b.Draw(row.Texture, new Vector2(boxRect.X + 16, boxRect.Y + 10), row.SourceRect, Color.White, 0f, Vector2.Zero, iconScale, SpriteEffects.None, 0.9f);
             }
 
-            // Tên và phân loại
+            // Tên item / NPC
             b.DrawString(Game1.smallFont, row.Name, new Vector2(boxRect.X + 76, boxRect.Y + 12), Color.Black);
-            b.DrawString(Game1.tinyFont, $"[{row.Category}]", new Vector2(boxRect.X + 76, boxRect.Y + 40), Color.DarkSlateGray);
+
+            // Tag phân loại dạng Pill gọn gàng, tinh tế, không vỡ layout
+            string categoryTag = row.Category;
+            Vector2 catSize = Game1.tinyFont.MeasureString(categoryTag);
+            Rectangle pillRect = new Rectangle(boxRect.X + 76, boxRect.Y + 40, (int)catSize.X + 16, 20);
+            b.Draw(Game1.fadeToBlackRect, pillRect, Color.Black * 0.15f);
+            b.DrawString(Game1.tinyFont, categoryTag, new Vector2(pillRect.X + 8, pillRect.Y + 1), Color.DarkSlateGray);
 
             // Nhãn trạng thái BẬT / TẮT
-            string statusText = row.Enabled ? "[BẬT]" : "[TẮT]";
-            Color statusColor = row.Enabled ? new Color(0, 120, 0) : Color.DarkRed;
+            string statusText = row.Enabled ? "BẬT" : "TẮT";
+            Color statusColor = row.Enabled ? new Color(0, 130, 0) : Color.DarkRed;
             Vector2 statusSize = Game1.smallFont.MeasureString(statusText);
-            b.DrawString(Game1.smallFont, statusText, new Vector2(boxRect.Right - statusSize.X - 20, boxRect.Y + 18), statusColor);
+            b.DrawString(Game1.smallFont, statusText, new Vector2(boxRect.Right - statusSize.X - 24, boxRect.Y + 18), statusColor);
         }
 
         b.End();

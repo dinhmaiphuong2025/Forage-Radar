@@ -203,21 +203,23 @@ public class ModOptionsPlusMinus : OptionsElement
 
     public override void draw(Microsoft.Xna.Framework.Graphics.SpriteBatch b, int slotX, int slotY, IClickableMenu? context = null)
     {
-        int labelWidth = (int)Game1.dialogueFont.MeasureString(this.label).X;
+        // Sử dụng smallFont để kích thước văn bản và nhãn đồng bộ 100% với Setting gốc của game
+        int labelWidth = (int)Game1.smallFont.MeasureString(this.label).X;
         int startX = slotX + this.bounds.X + labelWidth + 24;
         int itemY = slotY + this.bounds.Y;
 
-        this.minusButton = new Rectangle(startX, itemY, 28, 32);
+        this.minusButton = new Rectangle(startX, itemY - 2, 28, 32);
         b.Draw(Game1.mouseCursors, new Vector2(this.minusButton.X, this.minusButton.Y), new Rectangle(177, 345, 7, 8), this.selected > 0 ? Color.White : Color.Gray * 0.5f, 0f, Vector2.Zero, 4f, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0.4f);
 
         string currentText = this.Options[this.selected];
-        Vector2 textSize = Game1.dialogueFont.MeasureString(currentText);
-        b.DrawString(Game1.dialogueFont, currentText, new Vector2(startX + 36, itemY - 4), Game1.textColor);
+        Vector2 textSize = Game1.smallFont.MeasureString(currentText);
+        b.DrawString(Game1.smallFont, currentText, new Vector2(startX + 36, itemY), Game1.textColor);
 
-        this.plusButton = new Rectangle(startX + 44 + (int)textSize.X, itemY, 28, 32);
+        this.plusButton = new Rectangle(startX + 44 + (int)textSize.X, itemY - 2, 28, 32);
         b.Draw(Game1.mouseCursors, new Vector2(this.plusButton.X, this.plusButton.Y), new Rectangle(184, 345, 7, 8), this.selected < this.Options.Count - 1 ? Color.White : Color.Gray * 0.5f, 0f, Vector2.Zero, 4f, Microsoft.Xna.Framework.Graphics.SpriteEffects.None, 0.4f);
 
-        base.draw(b, slotX, slotY, context);
+        // Vẽ nhãn bằng smallFont đồng bộ Options
+        b.DrawString(Game1.smallFont, this.label, new Vector2(slotX + this.bounds.X, slotY + this.bounds.Y), this.greyedOut ? (Game1.textColor * 0.33f) : Game1.textColor);
     }
 }
 
