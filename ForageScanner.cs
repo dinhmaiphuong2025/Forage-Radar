@@ -99,11 +99,11 @@ public static class ForageScanner
                 Vector2 diff = npcPixel - playerPixel;
                 float angle = (float)Math.Atan2(diff.Y, diff.X);
 
-                // Ưu tiên dùng Mugshot từ Sprite đầu của NPC
+                // Dùng MugShot chân dung chuẩn 16x24 thay vì cắt cụt 16x16
                 if (npc.Sprite?.Texture != null)
                 {
-                    Rectangle headRect = new Rectangle(0, 0, 16, 16);
-                    items.Add(new TrackedItem(npcId, npc.displayName, npcPixel, distTiles, angle, npc.Sprite.Texture, headRect));
+                    Rectangle mugRect = npc.getMugShotSourceRect();
+                    items.Add(new TrackedItem(npcId, npc.displayName, npcPixel, distTiles, angle, npc.Sprite.Texture, mugRect));
                 }
             }
         }

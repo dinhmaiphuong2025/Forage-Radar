@@ -49,6 +49,12 @@ public class RadarRenderer
         // 3. Vẽ từng item trên vành đai radar quanh nhân vật
         foreach (var item in items)
         {
+            // Tự động ẩn icon & khoảng cách khi item hoặc NPC đã đi vào bên trong bán kính vòng tròn
+            // (Khoảng cách thực tế tính bằng pixel giữa người chơi và đối tượng <= bán kính vòng tròn radar)
+            float realDistancePixels = Vector2.Distance(playerCenter, item.WorldPosition);
+            if (realDistancePixels <= radius)
+                continue;
+
             float cos = (float)Math.Cos(item.Angle);
             float sin = (float)Math.Sin(item.Angle);
 
@@ -63,16 +69,16 @@ public class RadarRenderer
 
             Vector2 drawPos = Game1.GlobalToLocal(Game1.viewport, iconWorldPos);
 
-            // Icon item từ game asset hoặc Sprite NPC
+            // Icon item từ game asset hoặc Sprite NPC chân dung đầy đủ
             if (item.IsNpc && item.CustomTexture != null)
             {
-                float scale = this.Config.IconScale * 1.5f;
+                float scale = this.Config.IconScale * 1.15f;
                 Rectangle src = item.CustomSourceRect;
                 Vector2 origin = new Vector2(src.Width / 2f, src.Height / 2f);
 
                 // Bóng đổ
                 b.Draw(item.CustomTexture, drawPos + new Vector2(2, 2), src, Color.Black * 0.6f, 0f, origin, scale, SpriteEffects.None, 0.9f);
-                // Head Sprite chính
+                // Head/Portrait Sprite chính hiển thị trọn vẹn 100%
                 b.Draw(item.CustomTexture, drawPos, src, Color.White, 0f, origin, scale, SpriteEffects.None, 1f);
             }
             else if (item.ItemData != null)
@@ -95,7 +101,8 @@ public class RadarRenderer
                 string distText = $"{Math.Round(item.DistanceTiles)}m";
                 float textScale = this.Config.DistanceFontScale;
                 Vector2 textSize = Game1.smallFont.MeasureString(distText) * textScale;
-                Vector2 textPos = new Vector2(drawPos.X - textSize.X / 2f, drawPos.Y + 16f);
+                float verticalOffset = Math.Max(20f, this.Config.IconScale * 12f);
+                Vector2 textPos = new Vector2(drawPos.X - textSize.X / 2f, drawPos.Y + verticalOffset);
 
                 Utility.drawTextWithShadow(b, distText, Game1.smallFont, textPos, Color.White, textScale);
             }

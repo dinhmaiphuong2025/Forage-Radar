@@ -15,8 +15,10 @@ public class RadarMenu : IClickableMenu
     private readonly List<ItemRow> AllRows = new();
     private readonly List<ItemRow> FilteredRows = new();
 
-    private TextBox SearchBox;
-    private ClickableComponent SearchBoxCC;
+    // 2 Tabs: 0 = Dân Làng, 1 = Vật Phẩm & Kho Báu
+    private int ActiveTab = 0;
+    private Rectangle TabVillagersRect;
+    private Rectangle TabItemsRect;
 
     // Parallax scrolling & Touch Gestures
     private float CurrentScrollY = 0f;
@@ -29,15 +31,15 @@ public class RadarMenu : IClickableMenu
     private bool HasMovedEnough = false;
     private int PotentialClickedIndex = -1;
 
-    private const int RowHeight = 72;
-    private const int ViewportHeight = 360;
-    private const int TouchSlop = 14; // Ngưỡng dịch chuyển pixel để phân biệt chạm vs vuốt
+    private const int RowHeight = 84;
+    private const int ViewportHeight = 405;
+    private const int TouchSlop = 14;
 
     public class ItemRow
     {
         public string Id { get; }
         public string Name { get; }
-        public string Category { get; } // "Item" hoặc "Dân làng"
+        public string Category { get; }
         public bool IsNpc { get; }
         public Texture2D? Texture { get; }
         public Rectangle SourceRect { get; }
@@ -55,30 +57,30 @@ public class RadarMenu : IClickableMenu
         }
     }
 
-    public RadarMenu(ModConfig config, IModHelper helper)
+    public RadarMenu(ModConfig config, IModHelper helper, int initialTab = 0)
         : base(
-            x: (Game1.uiViewport.Width - 620) / 2,
-            y: (Game1.uiViewport.Height - 560) / 2,
-            width: 620,
-            height: 560,
+            x: (Game1.uiViewport.Width - 680) / 2,
+            y: (Game1.uiViewport.Height - 600) / 2,
+            width: 680,
+            height: 600,
             showUpperRightCloseButton: true)
     {
         this.Config = config;
         this.Helper = helper;
+        this.ActiveTab = initialTab;
 
-        // Ô tìm kiếm bằng chữ chuẩn Stardew Valley
-        Texture2D textBoxTex = Game1.content.Load<Texture2D>("LooseSprites\\textBox");
-        this.SearchBox = new TextBox(textBoxTex, null, Game1.smallFont, Color.Black)
-        {
-            X = this.xPositionOnScreen + 60,
-            Y = this.yPositionOnScreen + 85,
-            Width = this.width - 120,
-            Height = 48
-        };
-        this.SearchBoxCC = new ClickableComponent(new Rectangle(this.SearchBox.X, this.SearchBox.Y, this.SearchBox.Width, this.SearchBox.Height), "");
+        // Tọa độ các thành phần bên trong menu (padding 44px mỗi bên để gọn gàng hoàn toàn trong viền hộp thoại)
+        int innerX = this.xPositionOnScreen + 44;
+        int innerWidth = this.width - 88;
+
+        // Vị trí 2 Tabs
+        int tabWidth = (innerWidth - 14) / 2;
+        int tabY = this.yPositionOnScreen + 82;
+        this.TabVillagersRect = new Rectangle(innerX, tabY, tabWidth, 46);
+        this.TabItemsRect = new Rectangle(innerX + tabWidth + 14, tabY, tabWidth, 46);
 
         this.PopulateAll();
-        this.ApplySearchFilter();
+        this.ApplyFilter();
     }
 
     private void PopulateAll()
@@ -86,24 +88,25 @@ public class RadarMenu : IClickableMenu
         this.AllRows.Clear();
         var seen = new HashSet<string>();
 
-        // 1. Quét dân làng / NPC trước
+        // 1. NPC / Dân làng trong map hiện tại
         if (Game1.currentLocation != null)
         {
             foreach (var npc in Game1.currentLocation.characters)
             {
-                if (npc == null || npc.IsMonster || !npc.isVillager())
+                if (npc == null || npc.IsMonster || !npc.IsVillager)
                     continue;
 
                 string npcId = $"NPC_{npc.Name}";
                 if (seen.Add(npcId) && npc.Sprite?.Texture != null)
                 {
                     bool isEnabled = !this.Config.DisabledItemIds.Contains(npcId);
-                    this.AllRows.Add(new ItemRow(npcId, npc.displayName, "Dân làng", true, npc.Sprite.Texture, new Rectangle(0, 0, 16, 16), isEnabled));
+                    Rectangle mugRect = npc.getMugShotSourceRect();
+                    this.AllRows.Add(new ItemRow(npcId, npc.displayName, "Dân làng", true, npc.Sprite.Texture, mugRect, isEnabled));
                 }
             }
         }
 
-        // Thêm danh sách một số dân làng quen thuộc nếu map hiện tại vắng vẻ
+        // Danh sách NPC quen thuộc nếu map hiện tại ít người
         string[] commonNpcs = { "Robin", "Demetrius", "Maru", "Sebastian", "Linus", "Pierre", "Caroline", "Abigail", "Alex", "George", "Evelyn", "Lewis", "Clint", "Penny", "Pam", "Emily", "Haley", "Jas", "Vincent", "Jodi", "Kent", "Sam", "Leah", "Marnie", "Shane", "Harvey", "Elliott", "Gus", "Willy", "Wizard" };
         foreach (var name in commonNpcs)
         {
@@ -114,7 +117,8 @@ public class RadarMenu : IClickableMenu
                 if (charData?.Sprite?.Texture != null)
                 {
                     bool isEnabled = !this.Config.DisabledItemIds.Contains(id);
-                    this.AllRows.Add(new ItemRow(id, charData.displayName, "Dân làng", true, charData.Sprite.Texture, new Rectangle(0, 0, 16, 16), isEnabled));
+                    Rectangle mugRect = charData.getMugShotSourceRect();
+                    this.AllRows.Add(new ItemRow(id, charData.displayName, "Dân làng", true, charData.Sprite.Texture, mugRect, isEnabled));
                 }
             }
         }
@@ -124,10 +128,10 @@ public class RadarMenu : IClickableMenu
         {
             var data = ItemRegistry.GetData("(O)590");
             bool isEnabled = !this.Config.DisabledItemIds.Contains("(O)590");
-            this.AllRows.Add(new ItemRow("(O)590", "Điểm đào giun (Cổ vật / Kho báu)", "Kho báu", false, data?.GetTexture(), data != null ? data.GetSourceRect() : Rectangle.Empty, isEnabled));
+            this.AllRows.Add(new ItemRow("(O)590", "Điểm đào giun (Kho báu)", "Kho báu", false, data?.GetTexture(), data != null ? data.GetSourceRect() : Rectangle.Empty, isEnabled));
         }
 
-        // 3. Quét mọi item đang có trên map
+        // 3. Mọi item hái lượm đang có trên map
         if (Game1.currentLocation != null)
         {
             foreach (var pair in Game1.currentLocation.Objects.Pairs)
@@ -141,7 +145,7 @@ public class RadarMenu : IClickableMenu
                 {
                     var data = ItemRegistry.GetData(id);
                     bool isEnabled = !this.Config.DisabledItemIds.Contains(id);
-                    this.AllRows.Add(new ItemRow(id, obj.DisplayName, "Hái lượm", false, data?.GetTexture(), data != null ? data.GetSourceRect() : Rectangle.Empty, isEnabled));
+                    this.AllRows.Add(new ItemRow(id, obj.DisplayName, "Thu lượm", false, data?.GetTexture(), data != null ? data.GetSourceRect() : Rectangle.Empty, isEnabled));
                 }
             }
         }
@@ -152,10 +156,10 @@ public class RadarMenu : IClickableMenu
         {
             var data = ItemRegistry.GetData(berryId);
             bool isEnabled = !this.Config.DisabledItemIds.Contains(berryId);
-            this.AllRows.Add(new ItemRow(berryId, "Bụi dâu rừng chín", "Mùa vụ", false, data?.GetTexture(), data != null ? data.GetSourceRect() : Rectangle.Empty, isEnabled));
+            this.AllRows.Add(new ItemRow(berryId, "Bụi dâu chín", "Mùa vụ", false, data?.GetTexture(), data != null ? data.GetSourceRect() : Rectangle.Empty, isEnabled));
         }
 
-        // 5. Item các mùa trong năm
+        // 5. Item đặc trưng các mùa
         string[] allSeasonal = {
             "(O)16", "(O)18", "(O)20", "(O)22", "(O)257", "(O)399", // Xuân
             "(O)396", "(O)398", "(O)402", // Hạ
@@ -170,25 +174,29 @@ public class RadarMenu : IClickableMenu
                 if (data != null)
                 {
                     bool isEnabled = !this.Config.DisabledItemIds.Contains(id);
-                    this.AllRows.Add(new ItemRow(id, data.DisplayName, "Hái lượm", false, data.GetTexture(), data.GetSourceRect(), isEnabled));
+                    this.AllRows.Add(new ItemRow(id, data.DisplayName, "Thu lượm", false, data.GetTexture(), data.GetSourceRect(), isEnabled));
                 }
             }
         }
     }
 
-    private void ApplySearchFilter()
+    private void ApplyFilter()
     {
-        string query = this.SearchBox.Text?.Trim().ToLower() ?? "";
         this.FilteredRows.Clear();
 
         foreach (var row in this.AllRows)
         {
-            if (string.IsNullOrEmpty(query) || row.Name.ToLower().Contains(query) || row.Category.ToLower().Contains(query))
-            {
-                this.FilteredRows.Add(row);
-            }
+            // Lọc theo Tab: 0 = Dân Làng, 1 = Vật Phẩm / Kho Báu
+            if (this.ActiveTab == 0 && !row.IsNpc)
+                continue;
+            if (this.ActiveTab == 1 && row.IsNpc)
+                continue;
+
+            this.FilteredRows.Add(row);
         }
 
+        this.TargetScrollY = 0f;
+        this.CurrentScrollY = 0f;
         this.ClampScroll();
     }
 
@@ -208,29 +216,15 @@ public class RadarMenu : IClickableMenu
     {
         base.update(time);
 
-        // Hiệu ứng Parallax Smooth Scrolling (nội suy mượt mà)
+        // Nội suy mượt mà Parallax Scrolling
         if (Math.Abs(this.CurrentScrollY - this.TargetScrollY) > 0.1f)
         {
-            this.CurrentScrollY = MathHelper.Lerp(this.CurrentScrollY, this.TargetScrollY, 0.22f);
+            this.CurrentScrollY = MathHelper.Lerp(this.CurrentScrollY, this.TargetScrollY, 0.25f);
         }
         else
         {
             this.CurrentScrollY = this.TargetScrollY;
         }
-
-        // Tự động cập nhật bộ lọc nếu người chơi gõ chữ
-        this.SearchBox.Update();
-    }
-
-    public override void receiveKeyPress(Microsoft.Xna.Framework.Input.Keys key)
-    {
-        if (this.SearchBox.Selected)
-        {
-            this.ApplySearchFilter();
-            return;
-        }
-
-        base.receiveKeyPress(key);
     }
 
     public override void receiveScrollWheelAction(int direction)
@@ -244,20 +238,37 @@ public class RadarMenu : IClickableMenu
     {
         base.receiveLeftClick(x, y, playSound);
 
-        // Chạm vào ô tìm kiếm
-        if (this.SearchBoxCC.containsPoint(x, y))
+        // 1. Chuyển Tab: Tab 1 Dân Làng
+        if (this.TabVillagersRect.Contains(x, y))
         {
-            this.SearchBox.SelectMe();
+            if (this.ActiveTab != 0)
+            {
+                this.ActiveTab = 0;
+                Game1.playSound("shwip");
+                this.ApplyFilter();
+            }
             return;
         }
-        this.SearchBox.Selected = false;
 
-        // Vùng danh sách và thanh cuộn
-        int listTop = this.yPositionOnScreen + 145;
-        Rectangle listRect = new Rectangle(this.xPositionOnScreen + 30, listTop, this.width - 60, ViewportHeight);
+        // Tab 2 Vật Phẩm
+        if (this.TabItemsRect.Contains(x, y))
+        {
+            if (this.ActiveTab != 1)
+            {
+                this.ActiveTab = 1;
+                Game1.playSound("shwip");
+                this.ApplyFilter();
+            }
+            return;
+        }
+
+        // 2. Vùng danh sách và thanh cuộn
+        int listTop = this.yPositionOnScreen + 140;
+        int listWidth = this.width - 88;
+        Rectangle listRect = new Rectangle(this.xPositionOnScreen + 44, listTop, listWidth, ViewportHeight);
         Rectangle scrollBarArea = new Rectangle(listRect.Right - 28, listTop, 32, ViewportHeight);
 
-        // 1. Kiểm tra chạm vào vùng thanh cuộn (ScrollBar)
+        // Kiểm tra thanh cuộn ScrollBar
         if (scrollBarArea.Contains(x, y))
         {
             this.IsDraggingScrollBar = true;
@@ -265,7 +276,7 @@ public class RadarMenu : IClickableMenu
             return;
         }
 
-        // 2. Chạm vào danh sách (ghi nhận vị trí bắt đầu, chưa toggle item vội để tránh nhầm với vuốt)
+        // Kiểm tra danh sách item
         if (listRect.Contains(x, y))
         {
             this.IsDragging = true;
@@ -293,22 +304,19 @@ public class RadarMenu : IClickableMenu
     {
         base.leftClickHeld(x, y);
 
-        int listTop = this.yPositionOnScreen + 145;
+        int listTop = this.yPositionOnScreen + 140;
 
-        // Kéo trực tiếp thanh ScrollBar
         if (this.IsDraggingScrollBar)
         {
             this.UpdateScrollFromTouchY(y, listTop);
             return;
         }
 
-        // Vuốt cảm ứng nội dung danh sách trên màn hình điện thoại
         if (this.IsDragging)
         {
             int deltaY = y - this.TouchStartY;
             int deltaX = x - this.TouchStartX;
 
-            // Nếu ngón tay dịch chuyển vượt quá TouchSlop (14px) => Xác nhận là thao tác VUỐT (Scroll)
             if (Math.Abs(deltaY) > TouchSlop || Math.Abs(deltaX) > TouchSlop)
             {
                 this.HasMovedEnough = true;
@@ -326,7 +334,7 @@ public class RadarMenu : IClickableMenu
     {
         base.releaseLeftClick(x, y);
 
-        // Chỉ khi người dùng KHÔNG vuốt (ngón tay đứng yên hoặc nhấc lên ngay tại chỗ) mới nhận diện là CHẠM để BẬT/TẮT
+        // Chỉ toggle BẬT / TẮT khi người dùng chạm và nhấc ngón tay lên, không thực hiện thao tác vuốt cuộn
         if (this.IsDragging && !this.HasMovedEnough && this.PotentialClickedIndex >= 0 && this.PotentialClickedIndex < this.FilteredRows.Count)
         {
             var row = this.FilteredRows[this.PotentialClickedIndex];
@@ -349,33 +357,44 @@ public class RadarMenu : IClickableMenu
 
     public override void draw(SpriteBatch b)
     {
-        // 1. Phông nền làm mờ
-        b.Draw(Game1.fadeToBlackRect, Game1.graphics.GraphicsDevice.Viewport.Bounds, Color.Black * 0.5f);
+        // 1. Nền mờ phía sau
+        b.Draw(Game1.fadeToBlackRect, Game1.graphics.GraphicsDevice.Viewport.Bounds, Color.Black * 0.55f);
 
-        // 2. Khung viền gỗ hộp thoại chính của Stardew Valley
+        // 2. Khung hộp thoại Stardew Valley
         Game1.drawDialogueBox(this.xPositionOnScreen, this.yPositionOnScreen, this.width, this.height, false, true);
 
-        // 3. Tiêu đề Menu
-        string title = "Radar Hái Lượm & Dân Làng";
+        // 3. Tiêu đề màu trắng nổi bật
+        string title = "Radar | Thu Lượm & Dân Làng";
         Vector2 titleSize = Game1.dialogueFont.MeasureString(title);
-        b.DrawString(Game1.dialogueFont, title, new Vector2(this.xPositionOnScreen + (this.width - titleSize.X) / 2f, this.yPositionOnScreen + 35), Game1.textColor);
+        Vector2 titlePos = new Vector2(this.xPositionOnScreen + (this.width - titleSize.X) / 2f, this.yPositionOnScreen + 32);
+        // Đổ bóng nhẹ phía sau để chữ trắng đọc siêu nét trên mọi nền hộp thoại
+        b.DrawString(Game1.dialogueFont, title, titlePos + new Vector2(2, 2), Color.Black * 0.75f);
+        b.DrawString(Game1.dialogueFont, title, titlePos, Color.White);
 
-        // 4. Ô gõ tìm kiếm (Search Box)
-        this.SearchBox.Draw(b);
-        if (string.IsNullOrEmpty(this.SearchBox.Text) && !this.SearchBox.Selected)
-        {
-            b.DrawString(Game1.smallFont, "Nhập tên item hoặc dân làng để tìm kiếm...", new Vector2(this.SearchBox.X + 16, this.SearchBox.Y + 12), Color.Gray);
-        }
+        // 4. Vẽ 2 Tab chọn (Dân làng / Vật phẩm) nằm gọn gàng 100% trong khung
+        // Tab 1: Dân làng
+        Color tab1Bg = (this.ActiveTab == 0) ? new Color(255, 235, 190) : new Color(175, 160, 140);
+        IClickableMenu.drawTextureBox(b, Game1.menuTexture, new Rectangle(64, 320, 64, 64), this.TabVillagersRect.X, this.TabVillagersRect.Y, this.TabVillagersRect.Width, this.TabVillagersRect.Height, tab1Bg, 2f, false);
+        string tab1Text = "👥 DÂN LÀNG";
+        Vector2 tab1Size = Game1.smallFont.MeasureString(tab1Text);
+        Color tab1TextColor = (this.ActiveTab == 0) ? Game1.textColor : new Color(70, 50, 40);
+        b.DrawString(Game1.smallFont, tab1Text, new Vector2(this.TabVillagersRect.X + (this.TabVillagersRect.Width - tab1Size.X) / 2f, this.TabVillagersRect.Y + 11), tab1TextColor);
 
-        // 5. Vùng Parallax Scrolling List với ScissorRectangle
-        int listTop = this.yPositionOnScreen + 145;
-        Rectangle listRect = new Rectangle(this.xPositionOnScreen + 35, listTop, this.width - 70, ViewportHeight);
+        // Tab 2: Vật phẩm
+        Color tab2Bg = (this.ActiveTab == 1) ? new Color(255, 235, 190) : new Color(175, 160, 140);
+        IClickableMenu.drawTextureBox(b, Game1.menuTexture, new Rectangle(64, 320, 64, 64), this.TabItemsRect.X, this.TabItemsRect.Y, this.TabItemsRect.Width, this.TabItemsRect.Height, tab2Bg, 2f, false);
+        string tab2Text = "🍄 VẬT PHẨM & KHO BÁU";
+        Vector2 tab2Size = Game1.smallFont.MeasureString(tab2Text);
+        Color tab2TextColor = (this.ActiveTab == 1) ? Game1.textColor : new Color(70, 50, 40);
+        b.DrawString(Game1.smallFont, tab2Text, new Vector2(this.TabItemsRect.X + (this.TabItemsRect.Width - tab2Size.X) / 2f, this.TabItemsRect.Y + 11), tab2TextColor);
 
-        // Lớp nền nền phụ cho danh sách tạo cảm giác chiều sâu (Parallax layer 1: Tốc độ 0.3x)
-        float bgParallaxOffset = (this.CurrentScrollY * 0.25f) % 32f;
+        // 5. Parallax Scrolling List với Scissor Clipping
+        int listTop = this.yPositionOnScreen + 140;
+        int listWidth = this.width - 88;
+        Rectangle listRect = new Rectangle(this.xPositionOnScreen + 44, listTop, listWidth, ViewportHeight);
+
         IClickableMenu.drawTextureBox(b, Game1.menuTexture, new Rectangle(64, 320, 64, 64), listRect.X, listRect.Y, listRect.Width, listRect.Height, Color.Wheat * 0.35f, 2f, false);
 
-        // Cắt góc Scissor để cuộn không tràn ra ngoài viền
         RasterizerState prevRaster = b.GraphicsDevice.RasterizerState;
         Rectangle prevScissor = b.GraphicsDevice.ScissorRectangle;
 
@@ -384,64 +403,82 @@ public class RadarMenu : IClickableMenu
         b.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, rState);
         b.GraphicsDevice.ScissorRectangle = listRect;
 
-        // Vẽ các dòng item (Parallax layer 2: Tốc độ cuộn 1.0x)
         for (int i = 0; i < this.FilteredRows.Count; i++)
         {
             float rowY = listTop + (i * RowHeight) - this.CurrentScrollY;
 
-            // Bỏ qua vẽ các phần tử nằm ngoài tầm nhìn để tối ưu hiệu năng
             if (rowY + RowHeight < listTop || rowY > listTop + ViewportHeight)
                 continue;
 
             var row = this.FilteredRows[i];
             Rectangle boxRect = new Rectangle(listRect.X + 4, (int)rowY + 2, listRect.Width - 8, RowHeight - 6);
 
-            // Nền nút item / NPC
-            Color bgColor = row.Enabled ? (row.IsNpc ? new Color(200, 230, 255) : new Color(190, 240, 190)) : new Color(230, 210, 210);
+            // Nền thẻ item với màu sắc hài hòa, thanh lịch
+            Color bgColor = row.Enabled ? (row.IsNpc ? new Color(220, 240, 255) : new Color(215, 248, 220)) : new Color(242, 225, 225);
             IClickableMenu.drawTextureBox(b, Game1.mouseCursors, new Rectangle(384, 396, 15, 15), boxRect.X, boxRect.Y, boxRect.Width, boxRect.Height, bgColor, 4f, false);
 
-            // Icon Sprite (Item hoặc Avatar Dân làng)
+            // Icon Sprite (Item hoặc Mugshot Chân dung Avatar Dân Làng)
+            // Chuẩn Mugshot 16x24 được phóng to căn giữa hoàn chỉnh tuyệt đối
             if (row.Texture != null)
             {
-                float iconScale = row.IsNpc ? 2.8f : 2.5f;
-                b.Draw(row.Texture, new Vector2(boxRect.X + 16, boxRect.Y + 10), row.SourceRect, Color.White, 0f, Vector2.Zero, iconScale, SpriteEffects.None, 0.9f);
+                float iconScale = row.IsNpc ? 2.8f : 2.8f;
+                int iconHeight = (int)(row.SourceRect.Height * iconScale);
+                int iconOffsetY = (boxRect.Height - iconHeight) / 2;
+                b.Draw(row.Texture, new Vector2(boxRect.X + 16, boxRect.Y + iconOffsetY), row.SourceRect, Color.White, 0f, Vector2.Zero, iconScale, SpriteEffects.None, 0.9f);
             }
 
-            // Tên item / NPC
-            b.DrawString(Game1.smallFont, row.Name, new Vector2(boxRect.X + 76, boxRect.Y + 12), Color.Black);
-
-            // Tag phân loại dạng Pill gọn gàng, tinh tế, không vỡ layout
-            string categoryTag = row.Category;
-            Vector2 catSize = Game1.tinyFont.MeasureString(categoryTag);
-            Rectangle pillRect = new Rectangle(boxRect.X + 76, boxRect.Y + 40, (int)catSize.X + 16, 20);
-            b.Draw(Game1.fadeToBlackRect, pillRect, Color.Black * 0.15f);
-            b.DrawString(Game1.tinyFont, categoryTag, new Vector2(pillRect.X + 8, pillRect.Y + 1), Color.DarkSlateGray);
-
-            // Nhãn trạng thái BẬT / TẮT
+            // Nhãn trạng thái BẬT / TẮT (ở góc phải)
             string statusText = row.Enabled ? "BẬT" : "TẮT";
             Color statusColor = row.Enabled ? new Color(0, 130, 0) : Color.DarkRed;
             Vector2 statusSize = Game1.smallFont.MeasureString(statusText);
-            b.DrawString(Game1.smallFont, statusText, new Vector2(boxRect.Right - statusSize.X - 24, boxRect.Y + 18), statusColor);
+            int statusX = boxRect.Right - (int)statusSize.X - 18;
+            int statusY = boxRect.Y + (int)((boxRect.Height - statusSize.Y) / 2f);
+
+            b.DrawString(Game1.smallFont, statusText, new Vector2(statusX, statusY), statusColor);
+
+            // Tag Danh mục: font chuẩn 1.0f rõ ràng, màu sắc tương phản cao
+            string categoryTag = $"[{row.Category}]";
+            Vector2 catSize = Game1.smallFont.MeasureString(categoryTag);
+            int catX = statusX - (int)catSize.X - 16;
+            int catY = boxRect.Y + (int)((boxRect.Height - catSize.Y) / 2f);
+
+            Color catColor = row.IsNpc ? new Color(20, 60, 160) : new Color(20, 110, 40);
+            b.DrawString(Game1.smallFont, categoryTag, new Vector2(catX, catY), catColor);
+
+            // Tên item / NPC: hiển thị màu Game1.textColor (màu nâu sẫm truyền thống của game) rõ ràng trên nền sáng
+            string displayName = row.Name;
+            int textStartX = boxRect.X + 74;
+            int maxNameWidth = catX - textStartX - 8;
+            Vector2 nameSize = Game1.smallFont.MeasureString(displayName);
+            if (nameSize.X > maxNameWidth && maxNameWidth > 50)
+            {
+                while (displayName.Length > 3 && (Game1.smallFont.MeasureString(displayName + "...").X) > maxNameWidth)
+                {
+                    displayName = displayName.Substring(0, displayName.Length - 1);
+                }
+                displayName += "...";
+            }
+            int nameY = boxRect.Y + (int)((boxRect.Height - nameSize.Y) / 2f);
+
+            b.DrawString(Game1.smallFont, displayName, new Vector2(textStartX, nameY), Game1.textColor);
         }
 
         b.End();
         b.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, prevRaster);
         b.GraphicsDevice.ScissorRectangle = prevScissor;
 
-        // Vẽ thanh cuộn ScrollBar bản rộng, dễ nhìn & dễ vuốt trên mobile
+        // Vẽ ScrollBar
         float maxScroll = this.GetMaxScroll();
         if (maxScroll > 0)
         {
-            int scrollBarX = listRect.Right - 16;
+            int scrollBarX = listRect.Right - 14;
             int barHeight = ViewportHeight;
-            float thumbHeight = Math.Max(48f, (float)ViewportHeight / (this.FilteredRows.Count * RowHeight) * ViewportHeight);
+            float thumbHeight = Math.Max(52f, (float)ViewportHeight / (this.FilteredRows.Count * RowHeight) * ViewportHeight);
             float thumbY = listTop + (this.CurrentScrollY / maxScroll) * (ViewportHeight - thumbHeight);
 
-            // Rãnh trượt (Track)
-            b.Draw(Game1.fadeToBlackRect, new Rectangle(scrollBarX, listTop, 12, barHeight), Color.Black * 0.25f);
+            b.Draw(Game1.fadeToBlackRect, new Rectangle(scrollBarX, listTop, 10, barHeight), Color.Black * 0.25f);
 
-            // Con trượt (Thumb) to rõ, viền nổi bật
-            Rectangle thumbRect = new Rectangle(scrollBarX, (int)thumbY, 12, (int)thumbHeight);
+            Rectangle thumbRect = new Rectangle(scrollBarX, (int)thumbY, 10, (int)thumbHeight);
             b.Draw(Game1.fadeToBlackRect, thumbRect, Color.Goldenrod * 0.9f);
             b.Draw(Game1.fadeToBlackRect, new Rectangle(thumbRect.X + 2, thumbRect.Y + 2, thumbRect.Width - 4, thumbRect.Height - 4), Color.Gold);
         }
