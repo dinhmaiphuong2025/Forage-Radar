@@ -18,15 +18,20 @@ public class RadarMenu : IClickableMenu
     private TextBox SearchBox;
     private ClickableComponent SearchBoxCC;
 
-    // Parallax scrolling
+    // Parallax scrolling & Touch Gestures
     private float CurrentScrollY = 0f;
     private float TargetScrollY = 0f;
     private bool IsDragging = false;
-    private int DragStartY = 0;
+    private bool IsDraggingScrollBar = false;
+    private int TouchStartX = 0;
+    private int TouchStartY = 0;
     private float DragStartScrollY = 0f;
+    private bool HasMovedEnough = false;
+    private int PotentialClickedIndex = -1;
 
     private const int RowHeight = 72;
     private const int ViewportHeight = 360;
+    private const int TouchSlop = 14; // Ngưỡng dịch chuyển pixel để phân biệt chạm vs vuốt
 
     public class ItemRow
     {
@@ -247,54 +252,99 @@ public class RadarMenu : IClickableMenu
         }
         this.SearchBox.Selected = false;
 
-        // Vùng hiển thị danh sách (viewport)
+        // Vùng danh sách và thanh cuộn
         int listTop = this.yPositionOnScreen + 145;
-        int listBottom = listTop + ViewportHeight;
         Rectangle listRect = new Rectangle(this.xPositionOnScreen + 30, listTop, this.width - 60, ViewportHeight);
+        Rectangle scrollBarArea = new Rectangle(listRect.Right - 28, listTop, 32, ViewportHeight);
 
+        // 1. Kiểm tra chạm vào vùng thanh cuộn (ScrollBar)
+        if (scrollBarArea.Contains(x, y))
+        {
+            this.IsDraggingScrollBar = true;
+            this.UpdateScrollFromTouchY(y, listTop);
+            return;
+        }
+
+        // 2. Chạm vào danh sách (ghi nhận vị trí bắt đầu, chưa toggle item vội để tránh nhầm với vuốt)
         if (listRect.Contains(x, y))
         {
             this.IsDragging = true;
-            this.DragStartY = y;
+            this.TouchStartX = x;
+            this.TouchStartY = y;
             this.DragStartScrollY = this.TargetScrollY;
+            this.HasMovedEnough = false;
 
-            // Kiểm tra click vào row
             float relativeY = (y - listTop) + this.CurrentScrollY;
-            int clickedIndex = (int)(relativeY / RowHeight);
-
-            if (clickedIndex >= 0 && clickedIndex < this.FilteredRows.Count)
-            {
-                var row = this.FilteredRows[clickedIndex];
-                row.Enabled = !row.Enabled;
-
-                if (row.Enabled)
-                    this.Config.DisabledItemIds.Remove(row.Id);
-                else
-                    this.Config.DisabledItemIds.Add(row.Id);
-
-                this.Helper.WriteConfig(this.Config);
-                Game1.playSound("drumkit6");
-            }
+            this.PotentialClickedIndex = (int)(relativeY / RowHeight);
         }
+    }
+
+    private void UpdateScrollFromTouchY(int y, int listTop)
+    {
+        float maxScroll = this.GetMaxScroll();
+        if (maxScroll <= 0) return;
+
+        float relativeY = MathHelper.Clamp(y - listTop, 0, ViewportHeight);
+        this.TargetScrollY = (relativeY / ViewportHeight) * maxScroll;
+        this.ClampScroll();
     }
 
     public override void leftClickHeld(int x, int y)
     {
         base.leftClickHeld(x, y);
 
-        // Kéo vuốt cảm ứng trên màn hình điện thoại (Touch Drag)
+        int listTop = this.yPositionOnScreen + 145;
+
+        // Kéo trực tiếp thanh ScrollBar
+        if (this.IsDraggingScrollBar)
+        {
+            this.UpdateScrollFromTouchY(y, listTop);
+            return;
+        }
+
+        // Vuốt cảm ứng nội dung danh sách trên màn hình điện thoại
         if (this.IsDragging)
         {
-            int deltaY = this.DragStartY - y;
-            this.TargetScrollY = this.DragStartScrollY + deltaY;
-            this.ClampScroll();
+            int deltaY = y - this.TouchStartY;
+            int deltaX = x - this.TouchStartX;
+
+            // Nếu ngón tay dịch chuyển vượt quá TouchSlop (14px) => Xác nhận là thao tác VUỐT (Scroll)
+            if (Math.Abs(deltaY) > TouchSlop || Math.Abs(deltaX) > TouchSlop)
+            {
+                this.HasMovedEnough = true;
+            }
+
+            if (this.HasMovedEnough)
+            {
+                this.TargetScrollY = this.DragStartScrollY - deltaY;
+                this.ClampScroll();
+            }
         }
     }
 
     public override void releaseLeftClick(int x, int y)
     {
         base.releaseLeftClick(x, y);
+
+        // Chỉ khi người dùng KHÔNG vuốt (ngón tay đứng yên hoặc nhấc lên ngay tại chỗ) mới nhận diện là CHẠM để BẬT/TẮT
+        if (this.IsDragging && !this.HasMovedEnough && this.PotentialClickedIndex >= 0 && this.PotentialClickedIndex < this.FilteredRows.Count)
+        {
+            var row = this.FilteredRows[this.PotentialClickedIndex];
+            row.Enabled = !row.Enabled;
+
+            if (row.Enabled)
+                this.Config.DisabledItemIds.Remove(row.Id);
+            else
+                this.Config.DisabledItemIds.Add(row.Id);
+
+            this.Helper.WriteConfig(this.Config);
+            Game1.playSound("drumkit6");
+        }
+
         this.IsDragging = false;
+        this.IsDraggingScrollBar = false;
+        this.HasMovedEnough = false;
+        this.PotentialClickedIndex = -1;
     }
 
     public override void draw(SpriteBatch b)
@@ -378,17 +428,22 @@ public class RadarMenu : IClickableMenu
         b.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, prevRaster);
         b.GraphicsDevice.ScissorRectangle = prevScissor;
 
-        // Vẽ thanh cuộn ScrollBar thanh lịch
+        // Vẽ thanh cuộn ScrollBar bản rộng, dễ nhìn & dễ vuốt trên mobile
         float maxScroll = this.GetMaxScroll();
         if (maxScroll > 0)
         {
-            int scrollBarX = listRect.Right - 8;
+            int scrollBarX = listRect.Right - 16;
             int barHeight = ViewportHeight;
-            float thumbHeight = Math.Max(30f, (float)ViewportHeight / (this.FilteredRows.Count * RowHeight) * ViewportHeight);
+            float thumbHeight = Math.Max(48f, (float)ViewportHeight / (this.FilteredRows.Count * RowHeight) * ViewportHeight);
             float thumbY = listTop + (this.CurrentScrollY / maxScroll) * (ViewportHeight - thumbHeight);
 
-            b.Draw(Game1.fadeToBlackRect, new Rectangle(scrollBarX, listTop, 6, barHeight), Color.Black * 0.2f);
-            b.Draw(Game1.fadeToBlackRect, new Rectangle(scrollBarX, (int)thumbY, 6, (int)thumbHeight), Color.Goldenrod * 0.8f);
+            // Rãnh trượt (Track)
+            b.Draw(Game1.fadeToBlackRect, new Rectangle(scrollBarX, listTop, 12, barHeight), Color.Black * 0.25f);
+
+            // Con trượt (Thumb) to rõ, viền nổi bật
+            Rectangle thumbRect = new Rectangle(scrollBarX, (int)thumbY, 12, (int)thumbHeight);
+            b.Draw(Game1.fadeToBlackRect, thumbRect, Color.Goldenrod * 0.9f);
+            b.Draw(Game1.fadeToBlackRect, new Rectangle(thumbRect.X + 2, thumbRect.Y + 2, thumbRect.Width - 4, thumbRect.Height - 4), Color.Gold);
         }
 
         base.draw(b);
