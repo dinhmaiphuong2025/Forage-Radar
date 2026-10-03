@@ -1,0 +1,10 @@
+{
+  "Name": "Forage Radar",
+  "Author": "dinhmaiphuong2025",
+  "Version": "1.0.0",
+  "Description": "Directional HUD radar and indicator for seasonal forageables around the player",
+  "UniqueID": "dinhmaiphuong2025.ForageRadar",
+  "EntryDll": "ForageRadar.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}
