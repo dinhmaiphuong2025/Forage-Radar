@@ -20,6 +20,7 @@ public class ModEntry : Mod
 
         helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
         helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
+        helper.Events.Display.RenderedWorld += this.OnRenderedWorld;
         helper.Events.Display.RenderedHud += this.OnRenderedHud;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
 
@@ -46,12 +47,22 @@ public class ModEntry : Mod
         }
     }
 
+    // Vẽ radar trong không gian World: ghim chuẩn xác tuyệt đối quanh người chơi dù camera đứng yên ở cổng hay góc map
+    private void OnRenderedWorld(object? sender, RenderedWorldEventArgs e)
+    {
+        if (!this.Config.Enabled || !Context.IsWorldReady || Game1.eventUp || Game1.activeClickableMenu != null)
+            return;
+
+        this.Renderer.DrawWorld(e.SpriteBatch, this.TrackedItems, Game1.player);
+    }
+
+    // Vẽ nút UI trên màn hình HUD
     private void OnRenderedHud(object? sender, RenderedHudEventArgs e)
     {
         if (!this.Config.Enabled || !Context.IsWorldReady || Game1.eventUp || Game1.activeClickableMenu != null)
             return;
 
-        this.Renderer.Draw(e.SpriteBatch, this.TrackedItems, Game1.player);
+        this.Renderer.DrawHud(e.SpriteBatch);
     }
 
     private void OnButtonPressed(object? sender, ButtonPressedEventArgs e)
@@ -59,13 +70,17 @@ public class ModEntry : Mod
         if (!Context.IsWorldReady || Game1.activeClickableMenu != null)
             return;
 
-        // Bắt sự kiện chạm cảm ứng trên màn hình hoặc click chuột
-        if (e.Button == SButton.MouseLeft)
+        // Bắt mọi nút chạm cảm ứng / click chuột
+        if (e.Button.IsUseToolButton() || e.Button == SButton.MouseLeft)
         {
-            Point mousePos = Game1.getMousePosition();
-            if (this.Renderer.ButtonBounds.Contains(mousePos.X, mousePos.Y))
+            // Kiểm tra cả tọa độ ScreenPixels từ SMAPI Cursor và Game1 Mouse
+            ICursorPosition cursor = this.Helper.Input.GetCursorPosition();
+            Point cursorPt = new Point((int)cursor.ScreenPixels.X, (int)cursor.ScreenPixels.Y);
+            Point mousePt = Game1.getMousePosition();
+
+            if (this.Renderer.ButtonBounds.Contains(cursorPt) || this.Renderer.ButtonBounds.Contains(mousePt))
             {
-                this.Helper.Input.Suppress(SButton.MouseLeft);
+                this.Helper.Input.Suppress(e.Button);
                 Game1.playSound("bigSelect");
                 Game1.activeClickableMenu = new RadarMenu(this.Config, this.Helper);
             }
